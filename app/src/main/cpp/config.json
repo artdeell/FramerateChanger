@@ -1,0 +1,12 @@
+{
+  "name": "libfpschanger.so",
+  "description": "A mod to change the framerate of the game",
+  "majorVersion":1,
+  "minorVersion":0,
+  "patchVersion":0,
+  "displayName":"Framerate Changer",
+  "displaysUI":true,
+  "dependencies": [
+
+  ]
+}
