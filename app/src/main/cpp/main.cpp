@@ -10,14 +10,19 @@
 #include "includes/misc/Logger.h"
 
 
-float* framerate = NULL;
+float* framerate = nullptr;
 bool NoInit = true;
 _Atomic bool hasInitFinished = false;
+char initFailReason[1024] = {0};
+const char* scudo_search_p = "[anon:scudo:";
+const size_t scudo_search_s = strlen(scudo_search_p);
+const char* libc_search_p = "[anon:libc_malloc";
+const size_t libc_search_s = strlen(libc_search_p);
 
 
 
-void* find(char* start, size_t size, char* what, size_t howMuch) {
-    if(size < howMuch) return NULL;
+void* find(char* start, size_t size, const char* what, size_t howMuch) {
+    if(size < howMuch) return nullptr;
     for(size_t i = 0; i < size; i++) {
         for(size_t j = 0; j < howMuch; j++) {
             if(start[i+j] != what[j]) break;
@@ -25,7 +30,7 @@ void* find(char* start, size_t size, char* what, size_t howMuch) {
             if(j == howMuch - 1) return &start[i];
         }
     }
-    return NULL;
+    return nullptr;
 }
 void* find_framerate(void* args) {
     ImVec2 vec = *((ImVec2*)args);
@@ -33,22 +38,21 @@ void* find_framerate(void* args) {
     float what[2];
     what[0] = vec.x;
     what[1] = vec.y;
-    __android_log_print(ANDROID_LOG_INFO,"FramerateChanger","FramerateSearch: %p", *((long*)what));
     FILE* file;
-    char* line = NULL;
+    char* line = nullptr;
     size_t len = 0;
-    const char* mapping_name_prefix = android_get_device_api_level() < 30 ? "[anon:libc_malloc" : "[anon:scudo:";
-    const int mapping_name_len = strlen(mapping_name_prefix);
     file = fopen("/proc/self/maps", "r");
-    if(file == NULL) {
+    if(file == nullptr) {
+        strcpy(initFailReason,  "Failed to read procmaps");
         hasInitFinished = true;
-        pthread_exit(NULL);
+        pthread_exit(nullptr);
     }
     bool NotFound = true;
+    bool scudoPageFound = false;
     while (NotFound && getline(&line, &len, file) != -1) {
         char* searchstart = strchr(line, '[');
-        if(searchstart == NULL) continue;
-        if(!strncmp(searchstart, mapping_name_prefix, mapping_name_len)) {
+        if(searchstart == nullptr) continue;
+        if(!strncmp(searchstart,scudo_search_p, scudo_search_s) || !strncmp(searchstart,libc_search_p, libc_search_s)) {
             char*end0 = nullptr;
             unsigned long addr0 = strtoul(line, &end0, 0x10);
             char*end1 = nullptr;
@@ -65,26 +69,28 @@ void* find_framerate(void* args) {
                 }
                 found = find((char*)addr0, addr1-addr0-1, (char *) what, sizeof what);
             }
+            scudoPageFound = true;
         }
     }
+    scudoPageFound ? strcpy(initFailReason, "Address not found") : strcpy(initFailReason, "No scudo pages");
     free(line);
     fclose(file);
     hasInitFinished = true;
-    pthread_exit(NULL);
+    pthread_exit(nullptr);
 }
 
 void Menu() {
     if(NoInit) {
         pthread_t p;
-        pthread_create(&p, NULL, &find_framerate, &ImGui::GetIO().DisplaySize);
+        pthread_create(&p, nullptr, &find_framerate, &ImGui::GetIO().DisplaySize);
         NoInit = false;
     }
     if(hasInitFinished) {
-        if(framerate != NULL) {
+        if(framerate != nullptr) {
             ImGui::Text("%s", "Maximum framerate");
             ImGui::SliderFloat("", framerate, 0.0f, 120.0f);
         }else {
-            ImGui::Text("%s", "Failed to initialize");
+            ImGui::Text("Failed to initialize (%s)", initFailReason);
             if(ImGui::Button("Retry")) {
                 hasInitFinished = false;
                 NoInit = true;
