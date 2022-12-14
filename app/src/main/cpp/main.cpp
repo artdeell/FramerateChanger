@@ -25,8 +25,8 @@ void* find(char* start, size_t size, const char* what, size_t howMuch) {
     if(size < howMuch) return nullptr;
     for(size_t i = 0; i < size; i++) {
         for(size_t j = 0; j < howMuch; j++) {
-            if(start[i+j] != what[j]) break;
             if(i+j >= size) break;
+            if(start[i+j] != what[j]) break;
             if(j == howMuch - 1) return &start[i];
         }
     }
